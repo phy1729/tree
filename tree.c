@@ -38,6 +38,7 @@ const char **Iflag;
 
 
 struct tree_ent {
+	char	*path;
 	char	*name;
 	mode_t	 mode;
 };
@@ -149,7 +150,7 @@ printdir(char *dir, char *prefix, size_t prefix_len, int ttl) {
 
 		if (asprintf(&path, "%s/%s", dir, dent->d_name) == -1)
 			err(1, "asprintf");
-		if (stat(path, &sb) == -1) {
+		if (lstat(path, &sb) == -1) {
 			warn("stat %s", path);
 			errno = 0;
 		} else {
@@ -161,6 +162,8 @@ printdir(char *dir, char *prefix, size_t prefix_len, int ttl) {
 				    sizeof(struct tree_ent))) == NULL)
 					err(1, "malloc");
 			}
+			if (S_ISLNK(sb.st_mode) && (ents[n].path = strdup(path)) == NULL)
+				err(1, "strdup");
 			if ((ents[n].name = strdup(dent->d_name)) == NULL)
 				err(1, "strdup");
 			ents[n].mode = sb.st_mode;
@@ -179,26 +182,37 @@ next:		;
 		}
 
 		printf("%s-- %s", prefix, ents[i].name);
-		if (Fflag)
-			print_suffix(ents[i].mode);
-		printf("\n");
 
-		if (S_ISDIR(ents[i].mode)) {
-			char *subdir, *subprefix;
+		if (S_ISLNK(ents[i].mode)) {
+			char buf[PATH_MAX];
+			ssize_t nbytes;
+			nbytes = readlink(ents[i].path, buf, PATH_MAX);
+			if (nbytes < 1)
+				err(1, "readlink");
+			printf(" -> %.*s\n", (int) nbytes, buf);
+			free(ents[i].path);
+		} else {
+			if (Fflag)
+				print_suffix(ents[i].mode);
+			printf("\n");
 
-			if (asprintf(&subdir, "%s/%s", dir,
-			    ents[i].name) == -1)
-				err(1, "asprintf");
-			if (asprintf(&subprefix, "%s   |", prefix) == -1)
-				err(1, "asprintf");
-			if (i == n - 1) {
-				subprefix[prefix_len - 1] = ' ';
+			if (S_ISDIR(ents[i].mode)) {
+				char *subdir, *subprefix;
+
+				if (asprintf(&subdir, "%s/%s", dir,
+				    ents[i].name) == -1)
+					err(1, "asprintf");
+				if (asprintf(&subprefix, "%s   |", prefix) == -1)
+					err(1, "asprintf");
+				if (i == n - 1) {
+					subprefix[prefix_len - 1] = ' ';
+				}
+				if (ttl != 0)
+					printdir(subdir, subprefix, prefix_len + 4,
+					    ttl);
+				free(subdir);
+				free(subprefix);
 			}
-			if (ttl != 0)
-				printdir(subdir, subprefix, prefix_len + 4,
-				    ttl);
-			free(subdir);
-			free(subprefix);
 		}
 		free(ents[i].name);
 	}
