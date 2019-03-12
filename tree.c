@@ -155,11 +155,12 @@ printdir(char *dir, char *prefix, size_t prefix_len, int ttl) {
 		} else {
 			if (dflag && S_ISDIR(sb.st_mode))
 				continue;
-			if (n == ents_size - 1)
+			if (n == ents_size - 1) {
 				ents_size *= 2;
 				if ((ents = reallocarray(ents, ents_size,
 				    sizeof(struct tree_ent))) == NULL)
 					err(1, "malloc");
+			}
 			if ((ents[n].name = strdup(dent->d_name)) == NULL)
 				err(1, "strdup");
 			ents[n].mode = sb.st_mode;
