@@ -27,6 +27,10 @@
 #include <string.h>
 #include <unistd.h>
 
+#if defined(__APPLE__) || defined(__linux__)
+void *reallocarray(void *optr, size_t nmemb, size_t size);
+#endif
+
 static void 		tree(char *, int);
 static void		printdir(char *, char *, size_t, int);
 static void		print_suffix(mode_t);
@@ -45,7 +49,6 @@ struct tree_ent {
 
 int
 main(int argc, char *argv[]) {
-	const char *errstr;
 	char ch, dot[] = ".";
 	int Lflag = -1;
 
@@ -70,9 +73,20 @@ main(int argc, char *argv[]) {
 			Iflag[Icount++] = optarg;
 			break;
 		case 'L':
-			Lflag = strtonum(optarg, 1, INT_MAX, &errstr);
-			if (errstr != NULL)
-				errx(1, "Level is %s: %s", errstr, optarg);
+			{
+#ifdef __OpenBSD__
+				const char *errstr;
+				Lflag = strtonum(optarg, 1, INT_MAX, &errstr);
+				if (errstr != NULL)
+					errx(1, "Level is %s: %s", errstr, optarg);
+#else
+				char *eptr;
+				errno = 0;
+				Lflag = strtol(optarg, &eptr, 10);
+				if (errno || eptr == optarg || *eptr != '\0')
+					errx(1, "Invalid level: %s", optarg);
+#endif
+			}
 			break;
 		case 'x':
 			xflag = 1;
@@ -84,8 +98,10 @@ main(int argc, char *argv[]) {
 	argc -= optind;
 	argv += optind;
 
+#ifdef __OpenBSD__
 	if (pledge("stdio rpath", NULL) == -1)
 		err(1, "pledge");
+#endif
 
 	if (argc)
 		for ( ; *argv; argv++)
@@ -259,3 +275,40 @@ __dead static void
 usage() {
 	errx(1, "tree [-adFx] [-I pattern] [-L depth]");
 }
+
+
+/*
+ * The following is copied-and-pasted directly from OpenBSD's libc:
+ *
+ * Copyright (c) 2008 Otto Moerbeek <otto@drijf.net>
+ *
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+#if defined(__APPLE__) || defined(__linux__)
+/*
+ * This is sqrt(SIZE_MAX+1), as s1*s2 <= SIZE_MAX
+ * if both s1 < MUL_NO_OVERFLOW and s2 < MUL_NO_OVERFLOW
+ */
+#define MUL_NO_OVERFLOW	((size_t)1 << (sizeof(size_t) * 4))
+
+void *
+reallocarray(void *optr, size_t nmemb, size_t size)
+{
+	if ((nmemb >= MUL_NO_OVERFLOW || size >= MUL_NO_OVERFLOW) &&
+	    nmemb > 0 && SIZE_MAX / nmemb < size) {
+		errno = ENOMEM;
+		return NULL;
+	}
+	return realloc(optr, size * nmemb);
+}
+#endif
