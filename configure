@@ -1,0 +1,23 @@
+#!/bin/sh
+
+rm -f Makefile.inc
+cat >configure.c <<'EOF'
+#include <configure.h>
+EOF
+cat >configure.h <<'EOF'
+#include_next <stdlib.h>
+EOF
+
+for flags in '-Wpedantic -Wno-gnu-include-next' ''; do
+	if ${CC-cc} ${CFLAGS} -Werror $flags -I. -c -o /dev/null configure.c >/dev/null 2>&1; then
+		printf 'CFLAGS += %s\n' "$flags" >Makefile.inc
+		break
+	fi
+done
+
+rm -f configure.c configure.h
+
+if ! [ -f Makefile.inc ]; then
+	printf >&2 'Could not determine suitable flags\n'
+	exit 1
+fi
